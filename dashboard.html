@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مدیریت دیدگاه‌ها</title>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--accent:#38bdf8;--text:#e2e8f0;--muted:#94a3b8;--green:#10b981;--yellow:#f59e0b;--red:#ef4444}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:Vazirmatn,Tahoma,sans-serif;min-height:100vh;padding:20px}
+.container{max-width:860px;margin:0 auto}
+h1{font-size:1.3rem;margin-bottom:20px;color:var(--accent)}
+.card{background:var(--card);border-radius:12px;padding:20px;margin-bottom:16px}
+input[type=password]{width:100%;padding:10px;border:1px solid #334155;border-radius:8px;background:#0f172a;color:var(--text);margin-bottom:10px}
+button{background:var(--accent);color:#0f172a;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:bold;font-size:.9rem}
+button.sec{background:#334155;color:var(--text)}
+button.ok{background:var(--green);color:#052e16}
+button.warn{background:var(--yellow);color:#451a03}
+button.danger{background:var(--red);color:#fff}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.stat{flex:1;min-width:120px;background:var(--card);border-radius:10px;padding:14px;text-align:center}
+.stat b{display:block;font-size:1.6rem}
+.stat span{color:var(--muted);font-size:.8rem}
+.comment{background:#0f172a;border-radius:10px;padding:14px;margin-bottom:12px}
+.comment .meta{color:var(--muted);font-size:.8rem;margin-bottom:6px}
+.comment .body{white-space:pre-wrap;margin:8px 0}
+.comment .actions{display:flex;gap:8px;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem}
+.badge.approved{background:#064e3b;color:#6ee7b7}
+.badge.pending{background:#713f12;color:#fcd34d}
+.badge.spam{background:#7f1d1d;color:#fca5a5}
+.filter{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.hidden{display:none}
+.muted{color:var(--muted);font-size:.85rem}
+pre{background:#0f172a;padding:10px;border-radius:8px;overflow-x:auto;font-size:.8rem;direction:ltr;text-align:left;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>💬 مدیریت دیدگاه‌ها</h1>
+
+<div id="login" class="card">
+  <h2 style="margin-bottom:12px">ورود</h2>
+  <input type="password" id="key" placeholder="کلید سایت (secret)">
+  <button onclick="login()">ورود</button>
+  <p class="muted" style="margin-top:8px">کلید همان secret سایت است که هنگام ساخت سایت دریافت کردید.</p>
+</div>
+
+<div id="main" class="hidden">
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <h2 style="margin-bottom:12px">فیلتر</h2>
+    <div class="filter">
+      <button class="sec" onclick="setFilter('')">همه</button>
+      <button class="ok" onclick="setFilter('approved')">تأییدشده</button>
+      <button class="warn" onclick="setFilter('pending')">در انتظار</button>
+      <button class="danger" onclick="setFilter('spam')">اسپم</button>
+      <button class="sec" onclick="exportCSV()" style="margin-inline-start:auto">⬇️ خروجی CSV</button>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</div>
+</div>
+
+<script>
+let KEY = '';
+let FILTER = '';
+const SITE = new URLSearchParams(location.search).get('site') || '';
+const BASE = location.origin;
+
+async function api(path, opts = {}) {
+  const r = await fetch(BASE + path, { ...opts, headers: { ...(opts.headers || {}), 'Authorization': 'Bearer ' + KEY } });
+  if (r.status === 401) { alert('دسترسی غیرمجاز — کلید را چک کنید'); throw new Error('401'); }
+  return r.json();
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function login() {
+  KEY = document.getElementById('key').value.trim();
+  if (!KEY) return alert('کلید را وارد کنید');
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('main').classList.remove('hidden');
+  loadStats();
+  loadComments();
+}
+
+async function loadStats() {
+  const s = await api('/api/' + SITE + '/admin/stats');
+  document.getElementById('stats').innerHTML =
+    `<div class="stat"><b>${s.approved}</b><span>تأییدشده</span></div>` +
+    `<div class="stat"><b>${s.pending}</b><span>در انتظار</span></div>` +
+    `<div class="stat"><b>${s.spam}</b><span>اسپم</span></div>`;
+}
+
+async function loadComments() {
+  const q = FILTER ? '?status=' + FILTER : '';
+  const d = await api('/api/' + SITE + '/admin/comments' + q);
+  const list = document.getElementById('list');
+  if (!d.comments.length) { list.innerHTML = '<p class="muted">دیدگاهی نیست</p>'; return; }
+  list.innerHTML = d.comments.map(c => {
+    const when = new Date(c.created_at * 1000).toLocaleString('fa-IR');
+    const badge = `<span class="badge ${c.status}">${c.status === 'approved' ? 'تأییدشده' : c.status === 'pending' ? 'در انتظار' : 'اسپم'}</span>`;
+    const actions = `
+      ${c.status !== 'approved' ? `<button class="ok" onclick="setStatus(${c.id},'approved')">✓ تأیید</button>` : ''}
+      ${c.status !== 'pending' ? `<button class="warn" onclick="setStatus(${c.id},'pending')">⏳ در انتظار</button>` : ''}
+      ${c.status !== 'spam' ? `<button class="danger" onclick="setStatus(${c.id},'spam')">🚫 اسپم</button>` : ''}
+      <button class="danger" onclick="del(${c.id})">🗑 حذف</button>`;
+    return `<div class="comment">
+      <div class="meta">#${c.id} • ${esc(c.author)} • ${when} • صفحه: ${esc(c.page_path)} ${badge}</div>
+      <div class="body">${esc(c.body)}</div>
+      <div class="actions">${actions}</div>
+    </div>`;
+  }).join('');
+}
+
+function setFilter(f) { FILTER = f; loadComments(); }
+
+async function setStatus(id, status) {
+  await api(`/api/${SITE}/admin/comments/${id}?status=${status}`, { method: 'POST' });
+  loadStats(); loadComments();
+}
+
+async function del(id) {
+  if (!confirm('حذف شود؟')) return;
+  await api(`/api/${SITE}/admin/delete/${id}`);
+  loadStats(); loadComments();
+}
+
+function exportCSV() { location.href = `${BASE}/api/${SITE}/admin/export.csv`; }
+
+// auto login if key in URL
+const k = new URLSearchParams(location.search).get('key');
+if (k) { document.getElementById('key').value = k; login(); }
+</script>
+</body>
+</html>
