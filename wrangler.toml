@@ -1,0 +1,15 @@
+name = "comment-worker"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+
+[[d1_databases]]
+binding = "D1"
+database_name = "comment-worker-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+
+[vars]
+# کلید سراسری ادمین — یک رشته تصادفی بلند بگذار (اختیاری برای آینده)
+ADMIN_KEY = "REPLACE_WITH_A_LONG_RANDOM_STRING"
